@@ -896,12 +896,12 @@ g++ -std=c++17 -pthread -O2 -I include -o dpi_engine \
 
 **Basic usage:**
 ```bash
-./dpi_engine test_dpi.pcap output.pcap
+./build/dpi_engine test_dpi.pcap output.pcap
 ```
 
 **With blocking:**
 ```bash
-./dpi_engine test_dpi.pcap output.pcap \
+./build/dpi_engine test_dpi.pcap output.pcap \
     --block-app YouTube \
     --block-app TikTok \
     --block-ip 192.168.1.50 \
