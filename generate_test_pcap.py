@@ -265,6 +265,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-# print("Test PCAP file 'test_dpi.pcap' generated successfully.")
