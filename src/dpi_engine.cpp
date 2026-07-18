@@ -55,12 +55,24 @@ bool DPIEngine::initialize() {
         fp_manager_->getQueuePtrs()
     );
     
-    // Create global connection table
+    // Open the NDJSON log sink (one JSON object per packet) for the backend
+    // shipper (scripts/ship_logs.js -> POST /logs).
+    json_log_.open("dpi_logs.json", std::ios::out | std::ios::trunc);
+    if (json_log_.is_open()) {
+        std::cout << "[DPIEngine] JSON log output: dpi_logs.json\n";
+    } else {
+        std::cerr << "[DPIEngine] Warning: could not open dpi_logs.json\n";
+    }
+
+    // Create global connection table and wire each FP to the log sink.
     global_conn_table_ = std::make_unique<GlobalConnectionTable>(total_fps);
     for (int i = 0; i < total_fps; i++) {
         global_conn_table_->registerTracker(i, &fp_manager_->getFP(i).getConnectionTracker());
+        if (json_log_.is_open()) {
+            fp_manager_->getFP(i).setJsonLog(&json_log_, &json_log_mutex_);
+        }
     }
-    
+
     std::cout << "[DPIEngine] Initialized successfully\n";
     return true;
 }
@@ -103,7 +115,13 @@ void DPIEngine::stop() {
     if (output_thread_.joinable()) {
         output_thread_.join();
     }
-    
+
+    // All FP threads have joined, so no more writers to the JSON sink — flush it.
+    if (json_log_.is_open()) {
+        json_log_.close();
+        std::cout << "[DPIEngine] JSON logs written to dpi_logs.json\n";
+    }
+
     std::cout << "[DPIEngine] All threads stopped\n";
 }
 

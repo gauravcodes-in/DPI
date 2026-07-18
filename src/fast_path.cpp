@@ -5,6 +5,38 @@
 
 namespace DPI {
 
+// ---------------------------------------------------------------------------
+// Local helpers for NDJSON logging (kept file-local to avoid header churn).
+// ---------------------------------------------------------------------------
+namespace {
+
+// uint32_t (host-order, byte0 == first octet) -> dotted-decimal string.
+std::string ipToString(uint32_t ip) {
+    return std::to_string(ip & 0xFF) + "." +
+           std::to_string((ip >> 8) & 0xFF) + "." +
+           std::to_string((ip >> 16) & 0xFF) + "." +
+           std::to_string((ip >> 24) & 0xFF);
+}
+
+// Minimal JSON string escaping.
+std::string jsonEscape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:   out += c;
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 // ============================================================================
 // FastPathProcessor Implementation
 // ============================================================================
@@ -61,7 +93,13 @@ void FastPathProcessor::run() {
         
         // Process the packet
         PacketAction action = processPacket(*job_opt);
-        
+
+        // Emit a structured log line for the backend pipeline (dpi_logs.json).
+        // The connection now carries the classification + cumulative counters.
+        if (json_log_) {
+            logFlow(*job_opt, conn_tracker_.getConnection(job_opt->tuple), action);
+        }
+
         // Call output callback
         if (output_callback_) {
             output_callback_(*job_opt, action);
@@ -218,16 +256,16 @@ PacketAction FastPathProcessor::checkRules(const PacketJob& job, Connection* con
         ss << "[FP" << fp_id_ << "] BLOCKED packet: ";
         
         switch (block_reason->type) {
-            case RuleManager::BlockReason::IP:
+            case RuleManager::BlockReason::IP_RULE:
                 ss << "IP " << block_reason->detail;
                 break;
-            case RuleManager::BlockReason::APP:
+            case RuleManager::BlockReason::APP_RULE:
                 ss << "App " << block_reason->detail;
                 break;
-            case RuleManager::BlockReason::DOMAIN:
+            case RuleManager::BlockReason::DOMAIN_RULE:
                 ss << "Domain " << block_reason->detail;
                 break;
-            case RuleManager::BlockReason::PORT:
+            case RuleManager::BlockReason::PORT_RULE:
                 ss << "Port " << block_reason->detail;
                 break;
         }
@@ -274,6 +312,38 @@ void FastPathProcessor::updateTCPState(Connection* conn, uint8_t tcp_flags) {
     if (conn->fin_seen && (tcp_flags & ACK)) {
         conn->state = ConnectionState::CLOSED;
     }
+}
+
+void FastPathProcessor::logFlow(const PacketJob& job, const Connection* conn,
+                                PacketAction action) {
+    if (!json_log_ || !json_log_mutex_ || !conn) {
+        return;
+    }
+
+    // Derive a human-readable protocol label from the transport + port.
+    std::string protocol = "UNKNOWN";
+    if (job.tuple.protocol == 6) {           // TCP
+        protocol = (job.tuple.dst_port == 443) ? "HTTPS" : "HTTP";
+    } else if (job.tuple.protocol == 17) {   // UDP
+        protocol = "UDP";
+    }
+
+    const uint64_t packets = conn->packets_in + conn->packets_out;
+    const uint64_t bytes = conn->bytes_in + conn->bytes_out;
+    const char* action_str = (action == PacketAction::DROP) ? "blocked" : "forwarded";
+
+    std::ostringstream js;
+    js << "{\"src_ip\":\"" << ipToString(job.tuple.src_ip)
+       << "\",\"dest_ip\":\"" << ipToString(job.tuple.dst_ip)
+       << "\",\"domain\":\"" << jsonEscape(conn->sni)
+       << "\",\"application\":\"" << jsonEscape(appTypeToString(conn->app_type))
+       << "\",\"protocol\":\"" << protocol
+       << "\",\"bytes\":" << bytes
+       << ",\"packets\":" << packets
+       << ",\"action\":\"" << action_str << "\"}";
+
+    std::lock_guard<std::mutex> lock(*json_log_mutex_);
+    (*json_log_) << js.str() << "\n";
 }
 
 FastPathProcessor::FPStats FastPathProcessor::getStats() const {

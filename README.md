@@ -134,12 +134,23 @@ TLS Client Hello:
                     └─────────────┘
 ```
 
-### Two Versions
+### The Engine
 
-| Version | File | Use Case |
-|---------|------|----------|
-| Simple (Single-threaded) | `src/main_working.cpp` | Learning, small captures |
-| Multi-threaded | `src/dpi_mt.cpp` | Production, large captures |
+The DPI engine is a modular, multi-threaded pipeline. The entry point is
+`src/main_dpi.cpp`, which wires up the `DPIEngine` orchestrator (`src/dpi_engine.cpp`)
+and its thread pools (`LBManager` / `FPManager`).
+
+| Component | File | Role |
+|-----------|------|------|
+| Entry point / CLI | `src/main_dpi.cpp` | Parse args, apply rules, run the engine |
+| Orchestrator | `src/dpi_engine.cpp` | Reader thread, output writer, JSON logging |
+| Load balancers | `src/load_balancer.cpp` | Hash flows to fast-path workers |
+| Fast-path workers | `src/fast_path.cpp` | Connection tracking, DPI, rule matching |
+| Connection tracking | `src/connection_tracker.cpp` | Per-worker flow table |
+| Rules | `src/rule_manager.cpp` | IP / app / domain / port blocking |
+
+> A separate, minimal `packet_analyzer` target (`src/main.cpp`) exists as a small
+> single-file demo of the pcap-reading + parsing layer.
 
 ---
 
@@ -160,13 +171,17 @@ DPI/
 │   └── dpi_engine.h           # Main orchestrator
 │
 ├── src/                        # Implementation files
+│   ├── main_dpi.cpp           # ★ ENGINE ENTRY POINT (CLI) ★
+│   ├── dpi_engine.cpp         # Orchestrator: reader, output, JSON logging
+│   ├── load_balancer.cpp     # LB threads (hash flows to workers)
+│   ├── fast_path.cpp         # FP worker threads (DPI + rules)
+│   ├── connection_tracker.cpp # Per-worker flow table
+│   ├── rule_manager.cpp      # Blocking rules
 │   ├── pcap_reader.cpp        # PCAP file handling
 │   ├── packet_parser.cpp      # Protocol parsing
 │   ├── sni_extractor.cpp      # SNI/Host extraction
 │   ├── types.cpp              # Helper functions
-│   ├── main_working.cpp       # ★ SIMPLE VERSION ★
-│   ├── dpi_mt.cpp             # ★ MULTI-THREADED VERSION ★
-│   └── [other files]          # Supporting code
+│   └── main.cpp              # Minimal packet_analyzer demo target
 │
 ├── generate_test_pcap.py      # Creates test data
 ├── test_dpi.pcap              # Sample capture with various traffic
@@ -175,9 +190,11 @@ DPI/
 
 ---
 
-## 5. The Journey of a Packet (Simple Version)
+## 5. The Journey of a Packet (Conceptual, Single-threaded View)
 
-Let's trace a single packet through `main_working.cpp`:
+To understand the core logic, let's trace a single packet through the pipeline
+*as if it were single-threaded* (the same steps run concurrently across the
+worker threads in the real engine):
 
 ### Step 1: Read PCAP File
 
@@ -392,7 +409,7 @@ for (const auto& [tuple, flow] : flows) {
 
 ## 6. The Journey of a Packet (Multi-threaded Version)
 
-The multi-threaded version (`dpi_mt.cpp`) adds **parallelism** for high performance:
+The engine adds **parallelism** for high performance (orchestrated by `dpi_engine.cpp` across the LB and FP worker threads):
 
 ### Architecture Overview
 
@@ -872,25 +889,16 @@ Connection to YouTube:
 
 ### Build Commands
 
-**Simple Version:**
+The project builds with CMake (recommended):
+
 ```bash
-g++ -std=c++17 -O2 -I include -o dpi_simple \
-    src/main_working.cpp \
-    src/pcap_reader.cpp \
-    src/packet_parser.cpp \
-    src/sni_extractor.cpp \
-    src/types.cpp
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 ```
 
-**Multi-threaded Version:**
-```bash
-g++ -std=c++17 -pthread -O2 -I include -o dpi_engine \
-    src/dpi_mt.cpp \
-    src/pcap_reader.cpp \
-    src/packet_parser.cpp \
-    src/sni_extractor.cpp \
-    src/types.cpp
-```
+This produces two binaries in `build/`:
+- `build/dpi_engine` — the full multi-threaded DPI engine
+- `build/packet_analyzer` — the minimal pcap/parse demo
 
 ### Running
 
@@ -1048,7 +1056,7 @@ The key insight is that even HTTPS traffic leaks the destination domain in the T
 
 ## Questions?
 
-If you have questions about any part of this project, the code is well-commented and follows the same flow described in this document. Start with the simple version (`main_working.cpp`) to understand the concepts, then move to the multi-threaded version (`dpi_mt.cpp`) to see how parallelism is added.
+If you have questions about any part of this project, the code is well-commented and follows the same flow described in this document. Start with `src/main_dpi.cpp` (the CLI entry point), then read `src/dpi_engine.cpp` for orchestration and `src/fast_path.cpp` for the actual packet inspection.
 
 Happy learning! 🚀
 

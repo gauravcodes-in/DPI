@@ -16,7 +16,10 @@ LoadBalancer::LoadBalancer(int lb_id,
       num_fps_(fp_queues.size()),
       input_queue_(10000),
       fp_queues_(std::move(fp_queues)),
-      per_fp_counts_(fp_queues.size()) {
+      // NB: size from num_fps_, not fp_queues — the latter was just moved-from
+      // (empty) above, which previously left this vector size 0 and caused an
+      // out-of-bounds write in run().
+      per_fp_counts_(num_fps_) {
 }
 
 LoadBalancer::~LoadBalancer() {

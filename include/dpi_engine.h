@@ -146,6 +146,10 @@ private:
     std::thread output_thread_;
     std::ofstream output_file_;
     std::mutex output_mutex_;
+
+    // NDJSON log sink shared with all FP threads (feeds the backend pipeline).
+    std::ofstream json_log_;
+    std::mutex json_log_mutex_;
     
     // Statistics
     DPIStats stats_;

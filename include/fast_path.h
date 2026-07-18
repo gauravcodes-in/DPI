@@ -10,6 +10,8 @@
 #include <atomic>
 #include <memory>
 #include <functional>
+#include <fstream>
+#include <mutex>
 
 namespace DPI {
 
@@ -52,9 +54,17 @@ public:
     
     // Get input queue (for LB to push packets)
     ThreadSafeQueue<PacketJob>& getInputQueue() { return input_queue_; }
-    
+
     // Get connection tracker (for reporting)
     ConnectionTracker& getConnectionTracker() { return conn_tracker_; }
+
+    // Attach a shared NDJSON log sink (one JSON object per processed packet).
+    // The stream and its mutex are owned by the DPIEngine; the mutex serialises
+    // writes across all FP threads. Pass nullptrs (default) to disable logging.
+    void setJsonLog(std::ofstream* log, std::mutex* mtx) {
+        json_log_ = log;
+        json_log_mutex_ = mtx;
+    }
     
     // Get statistics
     struct FPStats {
@@ -120,6 +130,13 @@ private:
     
     // Update TCP connection state
     void updateTCPState(Connection* conn, uint8_t tcp_flags);
+
+    // Emit one NDJSON line describing this packet's flow (for the backend).
+    void logFlow(const PacketJob& job, const Connection* conn, PacketAction action);
+
+    // Optional shared JSON log sink (not owned).
+    std::ofstream* json_log_ = nullptr;
+    std::mutex* json_log_mutex_ = nullptr;
 };
 
 // ============================================================================

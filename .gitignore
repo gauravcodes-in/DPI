@@ -1,0 +1,34 @@
+# ---- Dependencies ----
+node_modules/
+
+# ---- C++ build artifacts ----
+build/
+compile_commands.json
+.cache/
+
+# Compiled engine binaries (produced by CMake)
+dpi_engine
+packet_analyzer
+*.o
+*.out
+
+# ---- Frontend build output ----
+frontend/dist/
+
+# ---- Runtime / generated data ----
+dpi_logs.json
+output.pcap
+output_blocked.pcap
+
+# ---- Secrets ----
+.env
+.env.local
+*.local
+
+# ---- Logs ----
+*.log
+
+# ---- Editor / OS ----
+.DS_Store
+.vscode/
+.idea/

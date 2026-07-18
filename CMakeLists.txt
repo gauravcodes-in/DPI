@@ -13,7 +13,12 @@ set(SOURCES
 )
 
 set(DPI_ENGINE_SOURCES
-    src/dpi_mt.cpp
+    src/main_dpi.cpp
+    src/dpi_engine.cpp
+    src/load_balancer.cpp
+    src/fast_path.cpp
+    src/connection_tracker.cpp
+    src/rule_manager.cpp
     src/pcap_reader.cpp
     src/packet_parser.cpp
     src/sni_extractor.cpp

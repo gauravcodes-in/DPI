@@ -91,7 +91,9 @@ public:
     // Check if a packet/connection should be blocked based on all rules
     // Returns the reason if blocked, nullopt if allowed
     struct BlockReason {
-        enum Type { IP, APP, DOMAIN, PORT } type;
+        // NOTE: values are suffixed with _RULE because bare DOMAIN collides
+        // with a `#define DOMAIN 1` macro pulled in from the system <math.h>.
+        enum Type { IP_RULE, APP_RULE, DOMAIN_RULE, PORT_RULE } type;
         std::string detail;
     };
     
